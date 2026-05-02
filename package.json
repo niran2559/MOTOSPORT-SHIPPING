@@ -17,7 +17,7 @@
     "@prisma/client": "^5.10.0",
     "bcryptjs": "^2.4.3",
     "clsx": "^2.1.0",
-    "date-fns": "^3.3.1",
+    "date-fns": "^4.1.0",
     "next": "^14.2.35",
     "next-auth": "^4.24.5",
     "papaparse": "^5.4.1",
