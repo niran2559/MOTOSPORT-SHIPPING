@@ -192,7 +192,7 @@ export default function ShipmentDetailPage() {
                     </div>
                     {so.quantityInShipment && (
                       <span style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
-                        {so.quantityInShipment} יח' במשלוח זה
+                        {so.quantityInShipment} יח&apos; במשלוח זה
                       </span>
                     )}
                   </div>
@@ -202,7 +202,7 @@ export default function ShipmentDetailPage() {
                       <table>
                         <thead>
                           <tr>
-                            <th>מק"ט</th>
+                            <th>מק&quot;ט</th>
                             <th>שם פריט</th>
                             <th>מותג</th>
                             <th>קטגוריה</th>
