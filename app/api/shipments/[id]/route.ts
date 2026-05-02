@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSession } from '@/lib/session'
 import { db } from '@/lib/db'
-import { Permissions } from '@/lib/permissions'
+import { Permissions, canAccessShipment } from '@/lib/permissions'
 import { trackOceanContainer, detectException } from '@/lib/shipsgo'
+import { z } from 'zod'
 
 // ========================
 // GET /api/shipments/[id]
@@ -24,17 +25,29 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
 
   if (!shipment) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
-  // בדיקת הרשאה לסוכן
-  const role = session.user.role as any
-  if (role === 'agent') {
-    const hasAccess = shipment.shipmentBranches.some(
-      (sb) => sb.branchId === session.user.branchId
-    )
-    if (!hasAccess) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  const branchIds = shipment.shipmentBranches.map((sb) => sb.branchId)
+  if (!canAccessShipment(session, branchIds)) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
   return NextResponse.json(shipment)
 }
+
+const UpdateShipmentSchema = z.object({
+  trackingId:      z.string().min(1).max(100).optional(),
+  type:            z.enum(['sea', 'air']).optional(),
+  description:     z.string().max(500).optional().nullable(),
+  carrierName:     z.string().max(200).optional().nullable(),
+  vesselId:        z.string().max(200).optional().nullable(),
+  originPort:      z.string().max(200).optional().nullable(),
+  destinationPort: z.string().max(200).optional().nullable(),
+  etaOriginal:     z.string().datetime({ offset: true }).optional().nullable(),
+  etaCurrent:      z.string().datetime({ offset: true }).optional().nullable(),
+  departureDate:   z.string().date().optional().nullable(),
+  status:          z.enum(['at_factory', 'to_foreign_port', 'at_foreign_port', 'at_sea', 'at_local_port', 'delivered']).optional(),
+  hasException:    z.boolean().optional(),
+  branchIds:       z.array(z.string().uuid()).optional(),
+})
 
 // ========================
 // PUT /api/shipments/[id]
@@ -49,28 +62,25 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
   }
 
   const body = await req.json()
-  const { branchIds, ...updateData } = body
+  const parsed = UpdateShipmentSchema.safeParse(body)
+  if (!parsed.success) {
+    return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 })
+  }
+
+  const { branchIds, etaOriginal, etaCurrent, departureDate, ...rest } = parsed.data
 
   const shipment = await db.shipment.update({
     where: { id: params.id },
     data: {
-      ...updateData,
-      ...(updateData.etaOriginal ? { etaOriginal: new Date(updateData.etaOriginal) } : {}),
-      ...(updateData.etaCurrent ? { etaCurrent: new Date(updateData.etaCurrent) } : {}),
-      ...(updateData.departureDate ? { departureDate: new Date(updateData.departureDate) } : {}),
-      // עדכון סניפים אם נשלחו
+      ...rest,
+      ...(etaOriginal !== undefined ? { etaOriginal: etaOriginal ? new Date(etaOriginal) : null } : {}),
+      ...(etaCurrent  !== undefined ? { etaCurrent:  etaCurrent  ? new Date(etaCurrent)  : null } : {}),
+      ...(departureDate !== undefined ? { departureDate: departureDate ? new Date(departureDate) : null } : {}),
       ...(branchIds
-        ? {
-            shipmentBranches: {
-              deleteMany: {},
-              create: branchIds.map((id: string) => ({ branchId: id })),
-            },
-          }
+        ? { shipmentBranches: { deleteMany: {}, create: branchIds.map((id) => ({ branchId: id })) } }
         : {}),
     },
-    include: {
-      shipmentBranches: { include: { branch: true } },
-    },
+    include: { shipmentBranches: { include: { branch: true } } },
   })
 
   return NextResponse.json(shipment)
@@ -83,8 +93,7 @@ export async function DELETE(req: NextRequest, { params }: { params: { id: strin
   const session = await getSession()
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const role = session.user.role as any
-  if (!Permissions.canDeleteShipment(role)) {
+  if (!Permissions.canDeleteShipment(session.user.role as any)) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
@@ -92,16 +101,14 @@ export async function DELETE(req: NextRequest, { params }: { params: { id: strin
   return NextResponse.json({ success: true })
 }
 
-// =======================================
-// POST /api/shipments/[id]/refresh
-// שאילתה ידנית מול ShipsGo
-// =======================================
+// ================================
+// PATCH /api/shipments/[id]/refresh
+// ================================
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
   const session = await getSession()
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const role = session.user.role as any
-  if (!Permissions.canEditShipment(role)) {
+  if (!Permissions.canEditShipment(session.user.role as any)) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
@@ -110,21 +117,20 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
 
   try {
     const apiData = await trackOceanContainer(shipment.trackingId)
-    const newEta = apiData.etaDate ? new Date(apiData.etaDate) : null
+    const newEta  = apiData.etaDate ? new Date(apiData.etaDate) : null
     const hasException = detectException(shipment.etaOriginal, newEta)
 
     const updated = await db.shipment.update({
       where: { id: params.id },
       data: {
-        status: apiData.status as any,
-        etaCurrent: newEta,
+        status:      apiData.status as any,
+        etaCurrent:  newEta,
         hasException,
         carrierName: apiData.carrierName || shipment.carrierName,
-        vesselId: apiData.vesselName || shipment.vesselId,
-        rawApiData: apiData.rawData as any,
+        vesselId:    apiData.vesselName  || shipment.vesselId,
+        rawApiData:  apiData.rawData as any,
       },
     })
-
     return NextResponse.json(updated)
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 })

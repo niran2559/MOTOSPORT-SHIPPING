@@ -21,8 +21,11 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
-  const { name } = await req.json()
-  if (!name?.trim()) return NextResponse.json({ error: 'שם סניף נדרש' }, { status: 400 })
+  const body = await req.json()
+  const { name } = body
+  if (!name || typeof name !== 'string' || !name.trim() || name.trim().length > 100) {
+    return NextResponse.json({ error: 'שם סניף נדרש (מקסימום 100 תווים)' }, { status: 400 })
+  }
 
   const branch = await db.branch.create({ data: { name: name.trim() } })
   return NextResponse.json(branch, { status: 201 })

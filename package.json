@@ -14,14 +14,14 @@
   "dependencies": {
     "@prisma/client": "^5.10.0",
     "bcryptjs": "^2.4.3",
-    "next": "14.1.0",
-    "next-auth": "^4.24.5",
-    "react": "^18",
-    "react-dom": "^18",
-    "papaparse": "^5.4.1",
-    "xlsx": "^0.18.5",
     "clsx": "^2.1.0",
     "date-fns": "^3.3.1",
+    "next": "^14.2.35",
+    "next-auth": "^4.24.5",
+    "papaparse": "^5.4.1",
+    "react": "^18",
+    "react-dom": "^18",
+    "xlsx": "^0.18.5",
     "zod": "^3.22.4"
   },
   "devDependencies": {
