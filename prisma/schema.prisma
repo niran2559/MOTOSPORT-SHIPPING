@@ -1,0 +1,129 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+model Branch {
+  id               String           @id @default(uuid())
+  name             String
+  createdAt        DateTime         @default(now()) @map("created_at")
+  orders           Order[]
+  shipmentBranches ShipmentBranch[]
+  users            User[]
+
+  @@map("branches")
+}
+
+model User {
+  id           String     @id @default(uuid())
+  name         String
+  email        String     @unique
+  passwordHash String     @map("password_hash")
+  branchId     String?    @map("branch_id")
+  lastLoginAt  DateTime?  @map("last_login_at")
+  createdAt    DateTime   @default(now()) @map("created_at")
+  role         UserRole   @default(agent)
+  shipments    Shipment[] @relation("CreatedBy")
+  branch       Branch?    @relation(fields: [branchId], references: [id])
+
+  @@map("users")
+}
+
+model Shipment {
+  id               String           @id @default(uuid())
+  trackingId       String           @unique @map("tracking_id")
+  description      String?
+  carrierName      String?          @map("carrier_name")
+  vesselId         String?          @map("vessel_id")
+  departureDate    DateTime?        @map("departure_date") @db.Date
+  originPort       String?          @map("origin_port")
+  destinationPort  String?          @map("destination_port")
+  etaOriginal      DateTime?        @map("eta_original")
+  etaCurrent       DateTime?        @map("eta_current")
+  hasException     Boolean          @default(false) @map("has_exception")
+  rawApiData       Json?            @map("raw_api_data")
+  createdBy        String?          @map("created_by")
+  createdAt        DateTime         @default(now()) @map("created_at")
+  updatedAt        DateTime         @updatedAt @map("updated_at")
+  type             ShipmentType     @default(sea)
+  status           ShipmentStatus   @default(at_factory)
+  shipmentBranches ShipmentBranch[]
+  shipmentOrders   ShipmentOrder[]
+  creator          User?            @relation("CreatedBy", fields: [createdBy], references: [id])
+
+  @@map("shipments")
+}
+
+model Order {
+  id             String          @id @default(uuid())
+  orderNumber    String          @unique @map("order_number")
+  agencyName     String?         @map("agency_name")
+  category       String?
+  orderDate      DateTime?       @map("order_date") @db.Date
+  branchId       String?         @map("branch_id")
+  createdAt      DateTime        @default(now()) @map("created_at")
+  items          OrderItem[]
+  branch         Branch?         @relation(fields: [branchId], references: [id])
+  shipmentOrders ShipmentOrder[]
+
+  @@map("orders")
+}
+
+model OrderItem {
+  id       String  @id @default(uuid())
+  orderId  String  @map("order_id")
+  sku      String
+  itemName String  @map("item_name")
+  category String?
+  brand    String?
+  quantity Int     @default(1)
+  order    Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@map("order_items")
+}
+
+model ShipmentOrder {
+  shipmentId         String   @map("shipment_id")
+  orderId            String   @map("order_id")
+  quantityInShipment Int?     @map("quantity_in_shipment")
+  order              Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  shipment           Shipment @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+
+  @@id([shipmentId, orderId])
+  @@map("shipment_orders")
+}
+
+model ShipmentBranch {
+  shipmentId String   @map("shipment_id")
+  branchId   String   @map("branch_id")
+  branch     Branch   @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  shipment   Shipment @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+
+  @@id([shipmentId, branchId])
+  @@map("shipment_branches")
+}
+
+enum UserRole {
+  admin
+  import_manager
+  agent
+}
+
+enum ShipmentType {
+  sea
+  air
+}
+
+enum ShipmentStatus {
+  at_factory
+  to_foreign_port
+  at_foreign_port
+  at_sea
+  at_local_port
+  delivered
+}
