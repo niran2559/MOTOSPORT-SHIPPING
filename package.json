@@ -15,7 +15,7 @@
   },
   "dependencies": {
     "@prisma/client": "^5.10.0",
-    "bcryptjs": "^2.4.3",
+    "bcryptjs": "^3.0.3",
     "clsx": "^2.1.0",
     "date-fns": "^3.3.1",
     "next": "^14.2.35",
@@ -30,7 +30,7 @@
     "eslint": "^8.57.0"
   },
   "devDependencies": {
-    "@types/bcryptjs": "^2.4.6",
+    "@types/bcryptjs": "^3.0.0",
     "@types/node": "^20",
     "@types/papaparse": "^5.3.14",
     "@types/react": "^18",
